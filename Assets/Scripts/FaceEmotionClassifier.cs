@@ -142,13 +142,13 @@ public class FaceEmotionClassifier:MonoBehaviour
   //small helper which finds the biggest value in the vector (used to spot a neutral face)
   private float MaxValue(float[] values)
   {
-    float max = 0f;
+    float biggest = 0f;
     foreach(float v in values)
     {
-      if(v > max) 
-        max = v;
+      if(v > biggest) 
+        biggest = v;
     }
       
-    return max;
+    return biggest;
   }
 }
