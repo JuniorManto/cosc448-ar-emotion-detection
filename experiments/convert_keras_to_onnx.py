@@ -42,7 +42,7 @@ def load_dense_weights(keras_path):
     #walk the file and grab every dataset no matter how deep its buried
     #i match layers by shape later so i don't care what keras named the groups
     def collect(name, obj):
-      if isinstance(obj, h5py.Dataset):
+      if isinstance(obj, h5py.Dataset) and name.startswith("layers/"):
         arrays.append(np.array(obj))
     h.visititems(collect)
 
