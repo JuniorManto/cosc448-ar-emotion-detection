@@ -39,11 +39,11 @@ def load_dense_weights(keras_path):
   import io
   arrays = []
   with h5py.File(io.BytesIO(raw), "r") as h:
-  #walk the file and grab every dataset no matter how deep its buried
-  #i match layers by shape later so i don't care what keras named the groups
-  def collect(name, obj):
-    if isinstance(obj, h5py.Dataset):
-      arrays.append(np.array(obj))
+    #walk the file and grab every dataset no matter how deep its buried
+    #i match layers by shape later so i don't care what keras named the groups
+    def collect(name, obj):
+      if isinstance(obj, h5py.Dataset):
+        arrays.append(np.array(obj))
     h.visititems(collect)
 
   #split into 2D kernels (the weight matrices) and 1D biases
@@ -56,55 +56,57 @@ def load_dense_weights(keras_path):
   #the models input is the 63 blendshapes
   in_dim = 63  
   used = [False] * len(kernels)
-  for _ in range(len(kernels)):
+  while True:
     found = False
-      for i, K in enumerate(kernels):
-        if not used[i] and K.shape[0] == in_dim:
-          #grab the matching bias (its length == this layers output size)
-            out_dim = K.shape[1]
-            bias = next(b for b in biases if b.shape[0] == out_dim)
-            ordered.append((K.astype(np.float32), bias.astype(np.float32)))
-            used[i] = True
-            #next layers input is this layers output
-            in_dim = out_dim 
-            found = True
-          break
-        if not found:
-          raise RuntimeError(f"couldn't find a layer taking {in_dim} inputs, shapes are off")
+    for i, K in enumerate(kernels):
+      if not used[i] and K.shape[0] == in_dim:
+        #grab the matching bias (its length == this layers output size)
+        out_dim = K.shape[1]
+        bias = next(b for b in biases if b.shape[0] == out_dim)
+        ordered.append((K.astype(np.float32), bias.astype(np.float32)))
+        used[i] = True
+        #next layers input is this layers output
+        in_dim = out_dim 
+        found = True
+        break
+    if not found:
+      break
+  if not ordered:
+    raise RuntimeError("could not find any dense layer taking 63 inputs")
   #list of (kernel, bias) in forward order
   return ordered  
 
 
 def build_onnx(layers, out_path):
-#i build the graph node by node
-#keras Dense does  y = relu(x @ kernel + bias)
-#onnx Gemm op does exactly x @ B + C when transB = 0, and keras kernels are already stored as [in, out] so they drop straight in with no transposing
-nodes = []
-#the constant weight tensors baked into the file
-inits = []  
-prev = "input"
-n = len(layers)
-for i, (K, b) in enumerate(layers):
-  wname, bname = f"W{i}", f"b{i}"
-  inits.append(numpy_helper.from_array(K, name=wname))
-  inits.append(numpy_helper.from_array(b, name=bname))
-  gemm_out = f"gemm{i}"
-  #Gemm x @ kernel + bias
-  nodes.append(helper.make_node("Gemm", [prev, wname, bname], [gemm_out], alpha = 1.0, beta = 1.0, transB = 0))
-  if i < n - 1:
-    #hidden layers get a ReLU after them
-    relu_out = f"relu{i}"
-    nodes.append(helper.make_node("Relu", [gemm_out], [relu_out]))
-    prev = relu_out
-  else:
-    #last layer gets a Softmax so the 7 outputs are nice 0...1 confidences
-    nodes.append(helper.make_node("Softmax", [gemm_out], ["output"], axis=1))
+  #i build the graph node by node
+  #keras Dense does  y = relu(x @ kernel + bias)
+  #onnx Gemm op does exactly x @ B + C when transB = 0, and keras kernels are already stored as [in, out] so they drop straight in with no transposing
+  nodes = []
+  #the constant weight tensors baked into the file
+  inits = []  
+  prev = "input"
+  n = len(layers)
+  for i, (K, b) in enumerate(layers):
+    wname, bname = f"W{i}", f"b{i}"
+    inits.append(numpy_helper.from_array(K, name=wname))
+    inits.append(numpy_helper.from_array(b, name=bname))
+    gemm_out = f"gemm{i}"
+    #Gemm x @ kernel + bias
+    nodes.append(helper.make_node("Gemm", [prev, wname, bname], [gemm_out], alpha = 1.0, beta = 1.0, transB = 0))
+    if i < n - 1:
+      #hidden layers get a ReLU after them
+      relu_out = f"relu{i}"
+      nodes.append(helper.make_node("Relu", [gemm_out], [relu_out]))
+      prev = relu_out
+    else:
+      #last layer gets a Softmax so the 7 outputs are nice 0...1 confidences
+      nodes.append(helper.make_node("Softmax", [gemm_out], ["output"], axis=1))
 
   #declare the input (1 row, 63 values) and output (1 row, 7 scores)
   inp = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 63])
   out = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, len(layers[-1][0][0])])
   graph = helper.make_graph(nodes, "fau_mlp", [inp], [out], initializer=inits)
-        
+
   #opset 13 covers Gemm/Relu/Softmax and is well inside what Unity Inference Engine supports
   model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
   #a conservative IR version that Sentis/Inference Engine reads happily
@@ -129,7 +131,7 @@ def main():
     import onnxruntime as ort
   except ImportError:
     print("(onnxruntime not installed, skipping the self-test, the file is still fine)")
-      return
+    return
   x = np.random.default_rng(1).random((1, 63)).astype(np.float32)
   #numpy reference - same forward pass i described above
   h = x
@@ -142,9 +144,10 @@ def main():
   ref = np.exp(h - h.max()) / np.exp(h - h.max()).sum() 
   got = ort.InferenceSession(out_path).run(None, {"input": x})[0]
   if np.allclose(ref, got, atol=1e-5):
-      print(f"self-test PASSED, onnx matches numpy. predicted: {LABELS[int(got.argmax())]}")
+    print(f"self-test PASSED, onnx matches numpy. predicted: {LABELS[int(got.argmax())]}")
   else:
     print("self-test FAILED, onnx output does not match numpy, do not use this file")
+
 
 if __name__ == "__main__":
   main()
