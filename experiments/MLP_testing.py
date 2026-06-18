@@ -12,7 +12,7 @@ this version tests three things the TA asked for
 this is in python because the MLP is a TensorFlow/Keras model, which cant run inside Unity C# so the comparison has to happen here 
 my real system is still the C# code
 
-i need to note that im honestly not sure if this is the right way to test the MLP
+note that im honestly not sure if this is the right way to test the MLP
 synthetic faces are built from EM-FACS rules that my cosine method also uses, so its biased toward cosine method 
 """
 
