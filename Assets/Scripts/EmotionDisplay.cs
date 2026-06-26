@@ -1,3 +1,5 @@
+using System.Linq;
+using System;
 using UnityEngine;
 
 //this is an additional script to display the emotion
@@ -26,15 +28,30 @@ public class EmotionDisplay:MonoBehaviour
     //safety check. if i forgot to hook something up in the inspector, do nothing instead of crashing
     if(classifier == null || emotionText == null)
       return;
-
-    //grab the current emotion from the classifier script
-    string current = classifier.CurrentEmotion;
-
-    //only bother updating the on screen text if the emotion changed from the previous frame
-    if(current != lastEmotion)
+    try
     {
-      emotionText.text = "Emotion: " + current;
-      lastEmotion = current;
+      //grab the current emotion from the classifier script
+      string current = classifier.CurrentEmotion;
+
+      //only bother updating the on screen text if the emotion changed from the previous frame
+      if (current != lastEmotion)
+      {
+        string vecStr = classifier.CurrentFaceVector != null
+          ? string.Join(", ", classifier.CurrentFaceVector.Select(f => f.ToString("F3")))
+          : "null";
+
+        bool trackingEnabled = classifier.FaceExpr != null && classifier.FaceExpr.FaceTrackingEnabled;
+
+        emotionText.text = $"OVRFaceExpressions Status: {trackingEnabled};\n\nCurrent Emotion: {current ?? "null"}\n\nCurrent Face Data:\n[{vecStr}]";
+        lastEmotion = current;
+      }
+    }
+    catch(Exception e)
+    {
+      Debug.LogError($"[Update] Crashed: {e.Message}");
+      Debug.Log($"FaceExpr null? {classifier.FaceExpr == null}");
+      Debug.Log($"CurrentFaceVector null? {classifier.CurrentFaceVector == null}");
+      Debug.Log($"CurrentEmotion null? {classifier.CurrentEmotion == null}");
     }
   }
 }
