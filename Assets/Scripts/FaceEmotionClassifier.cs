@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 //im gonna rehaul the script and try something else because after doing more research, this looks like a better idea. if im wrong and this doesnt work in the lab, i can just revert to the previous script
@@ -15,6 +16,8 @@ public class FaceEmotionClassifier:MonoBehaviour
   //we drag the object that has OVRFaceExpressions on it into this slot in the Unity inspector
   [SerializeField] private OVRFaceExpressions faceExpr;
 
+  public OVRFaceExpressions FaceExpr => faceExpr;
+  
   //this string is so other scripts like the UI display can read the current emotion
   public string CurrentEmotion{get; private set;} = "Neutral";
 
@@ -27,6 +30,9 @@ public class FaceEmotionClassifier:MonoBehaviour
   //for contempt, how lopsided the two lip corners have to be before i call it contempt
   [SerializeField] private float contemptAsymmetry = 0.3f;
 
+  private float[] currentFaceVector;
+  public float[] CurrentFaceVector => currentFaceVector;
+
   //these are the emotion templates. each slot lines up with the feature order in BuildFaceVector below
   //1 means this muscle should be active for this emotion, 0 means it shouldnt
   //the order is innerBrow, outerBrow, browLower, upperLid, cheekRaise, noseWrinkle, upperLip, smile, frown, lipStretch, jawDrop
@@ -36,6 +42,11 @@ public class FaceEmotionClassifier:MonoBehaviour
   private readonly float[] fear = {1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1};
   private readonly float[] anger = {0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0};
   private readonly float[] disgust = {0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0};
+
+  private void Start()
+  {
+    UnityEngine.Debug.Log($"aaaaaaaaaaaa == {faceExpr.FaceTrackingEnabled}");
+  }
 
   //update runs once every frame, which is exactly what we want for real time detection
   void Update()
@@ -58,6 +69,7 @@ public class FaceEmotionClassifier:MonoBehaviour
     //build the live face vector (same feature order as the templates up top)
     float[] face = BuildFaceVector();
 
+    currentFaceVector = face ?? new float[]{0,0,0};
     //if basically nothing is active on the face, just call it neutral instead of guessing
     if(MaxValue(face) < activeThreshold)
     {
